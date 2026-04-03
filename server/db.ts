@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, portalCredentials, searchCriteria, jobApplications, jobOffers, userProfiles } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,71 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// Portal Credentials
+export async function getPortalCredentials(userId: number, portal?: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (portal) {
+    return await db
+      .select()
+      .from(portalCredentials)
+      .where(and(eq(portalCredentials.userId, userId), eq(portalCredentials.portal, portal as any)));
+  }
+
+  return await db.select().from(portalCredentials).where(eq(portalCredentials.userId, userId));
+}
+
+// Search Criteria
+export async function getSearchCriteria(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(searchCriteria).where(eq(searchCriteria.userId, userId));
+}
+
+// Job Applications
+export async function getJobApplications(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(jobApplications).where(eq(jobApplications.userId, userId));
+}
+
+export async function getApplicationStats(userId: number) {
+  const db = await getDb();
+  if (!db) return { total: 0, submitted: 0, failed: 0, pending: 0 };
+
+  const apps = await db.select().from(jobApplications).where(eq(jobApplications.userId, userId));
+
+  return {
+    total: apps.length,
+    submitted: apps.filter((a) => a.status === "submitted").length,
+    failed: apps.filter((a) => a.status === "failed").length,
+    pending: apps.filter((a) => a.status === "pending").length,
+  };
+}
+
+// User Profile
+export async function getUserProfile(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+export async function upsertUserProfile(userId: number, data: any) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const existing = await getUserProfile(userId);
+
+  if (existing) {
+    await db.update(userProfiles).set(data).where(eq(userProfiles.userId, userId));
+  } else {
+    await db.insert(userProfiles).values({ userId, ...data });
+  }
+
+  return await getUserProfile(userId);
+}
